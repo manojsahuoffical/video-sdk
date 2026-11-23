@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>SonyLIV-style Player — Beacon Payload Demo</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.4.5/dist/hls.min.js"></script>
+  <style>
+    body { background:#071022; color:#eef6ff; font-family:Inter,system-ui,Arial; margin:20px; }
+    .wrap { max-width:1100px; margin:0 auto; display:grid; grid-template-columns:1fr 380px; gap:18px; }
+    .card { background: linear-gradient(180deg,#071028 0%,#071122 100%); border-radius:12px; padding:14px; border:1px solid rgba(255,255,255,0.03); box-shadow:0 8px 30px rgba(0,0,0,0.6); }
+    h1 { font-size:18px; margin:0 0 10px 0; }
+    video { width:100%; height:460px; background:#000; border-radius:10px; display:block; }
+    .controls { display:flex; gap:8px; margin-top:10px; align-items:center; }
+    input[type=text], select { padding:8px 10px; border-radius:8px; border:1px solid rgba(255,255,255,0.04); background:rgba(255,255,255,0.02); color:#cfe6ff; min-width:220px; }
+    button { padding:8px 12px; border-radius:8px; border:none; background:#ff5a1f; color:#fff; cursor:pointer; font-weight:600; }
+    button.alt { background:transparent; border:1px solid rgba(255,255,255,0.06); color:#cfe6ff; }
+    .log { font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, "Roboto Mono", monospace; font-size:12px; background:rgba(255,255,255,0.02); padding:10px; border-radius:8px; height:540px; overflow:auto; color:#dbefff; }
+    .small { font-size:12px; color:#9fb3d6; }
+    .row { display:flex; gap:8px; align-items:center; margin-top:8px; }
+    label { font-size:12px; color:#9fb3d6; }
+    footer { margin-top:10px; font-size:12px; color:#9fb3d6; text-align:center; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>SonyLIV-style Player — Live & VOD with Sony-like Beacon</h1>
+
+      <div id="videoWrap">
+        <video id="player" playsinline controls crossorigin="anonymous"></video>
+      </div>
+
+      <div class="controls">
+        <input id="streamUrl" type="text" value="https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8" />
+        <select id="streamType">
+          <option value="auto">Auto (HLS/MP4)</option>
+          <option value="hls">HLS</option>
+          <option value="mp4">MP4</option>
+        </select>
+        <button id="btnLoad">Load & Play</button>
+        <button id="btnStop" class="alt">Stop</button>
+      </div>
+
+      <div class="row small">
+        <label>Analytics endpoint:</label>
+        <input id="analyticsEndpoint" type="text" value="https://api-godavari.sonyliv.com/beacon" style="min-width:360px;" />
+      </div>
+
+      <div style="margin-top:8px;" class="small">
+        Note: replace generated IDs with real user/session IDs for production. Recording/DRM not included here.
+      </div>
+
+      <footer>Demo — payloads emulate the structure you provided.</footer>
+    </div>
+
+    <div class="card">
+      <h1>Event / Beacon Log</h1>
+      <div id="log" class="log">Ready — events will appear here...\n</div>
+    </div>
+  </div>
+  <script>
+    /* dataLayerVideo for client side data pass*/
+    dataLayerVideo=[{
+       'userType':'registered',
+       'partnerId':1,
+       'contentId':124,
+       'contentType':'Sports',
+       'contentName':'IFFA Award',
+       'videoPlayerName':'Videojs',
+       'playerVersion':'V1.1',
+       'VideoContentFormat':'hls',
+       'drm':'yes',
+       'VideoDecode':'H.264',
+       'cdn':'Cloudfront',
+       'videoType':'VOD',
+       'streamBite':'512p',
+       'videoWatchLength':'600',
+     }];
+  </script>
+<script type='text/javascript' src='./cdn-analytics.js'></script>
+</body>
+</html>

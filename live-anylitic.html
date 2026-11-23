@@ -1,0 +1,537 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SonyLIV-style Player — Live & VOD with Analytics + CDN logs</title>
+
+  <!-- Hls.js (for non-Safari browsers to play HLS) -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.4.5/dist/hls.min.js"></script>
+
+  <style>
+    :root {
+      --bg: #0f1724;
+      --card: #0b1220;
+      --accent: #ff4500;
+      --muted: #9aa4b2;
+      --glass: rgba(255,255,255,0.04);
+      --radius: 12px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 20px;
+      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      background: linear-gradient(180deg, #071029 0%, #081222 100%);
+      color: #e6eef6;
+    }
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr 360px;
+      gap: 20px;
+      align-items: start;
+    }
+
+    .player-card {
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+      border-radius: var(--radius);
+      padding: 14px;
+      box-shadow: 0 6px 30px rgba(0,0,0,0.7);
+      border: 1px solid rgba(255,255,255,0.04);
+    }
+
+    /* Video area */
+    .video-wrap {
+      position: relative;
+      border-radius: 10px;
+      overflow: hidden;
+      background: #000;
+    }
+    video {
+      width: 100%;
+      height: 480px;
+      display: block;
+      background: black;
+      object-fit: contain;
+    }
+
+    /* Controls / form */
+    .controls {
+      display:flex;
+      gap:8px;
+      margin-top:10px;
+      align-items:center;
+      flex-wrap:wrap;
+    }
+    input[type="text"], select {
+      padding:8px 10px;
+      border-radius:8px;
+      border:1px solid rgba(255,255,255,0.06);
+      background:var(--glass);
+      color:var(--muted);
+      min-width: 220px;
+    }
+    button {
+      background: linear-gradient(90deg,var(--accent), #e65a00);
+      border: none;
+      padding: 8px 12px;
+      border-radius: 8px;
+      color: white;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    button.secondary {
+      background: transparent;
+      border: 1px solid rgba(255,255,255,0.06);
+      color: var(--muted);
+    }
+
+    /* Right column: analytics */
+    .panel {
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+      border-radius: var(--radius);
+      padding: 14px;
+      height: calc(100% - 0px);
+      border: 1px solid rgba(255,255,255,0.04);
+      overflow: auto;
+    }
+    h3 { margin: 4px 0 10px 0; font-size: 16px; }
+    .stat {
+      margin-bottom: 10px;
+      padding: 8px;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.02);
+      font-size: 13px;
+    }
+    .log {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, "Roboto Mono", monospace;
+      font-size: 12px;
+      color: #d7e7ff;
+      line-height: 1.4;
+      max-height: 320px;
+      overflow: auto;
+      padding: 8px;
+      background: rgba(0,0,0,0.25);
+      border-radius: 8px;
+    }
+    .small { font-size: 12px; color: var(--muted); }
+
+    .flex { display:flex; gap:8px; align-items:center; }
+    .spacer { flex:1; }
+
+    footer { margin-top: 12px; font-size:12px; color:var(--muted); text-align:center; }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <div class="player-card">
+      <h2 style="margin:0 0 8px 0">SonyLIV-style Player — Live & VOD</h2>
+
+      <div class="video-wrap" id="videoWrap">
+        <video id="video" playsinline controls crossorigin="anonymous"></video>
+      </div>
+
+      <div class="controls" style="margin-top:12px;">
+        <input id="urlInput" type="text" placeholder="Enter stream URL (m3u8 or mp4)" value="https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8" />
+        <select id="typeSelect" title="Select stream type">
+          <option value="auto">Auto (HLS or MP4)</option>
+          <option value="hls">HLS (m3u8)</option>
+          <option value="mp4">MP4</option>
+        </select>
+        <button id="loadBtn">Load & Play</button>
+        <button id="stopBtn" class="secondary">Stop</button>
+
+        <div class="spacer"></div>
+
+        <button id="recordBtn" class="secondary">Start Recording</button>
+        <button id="downloadRecording" class="secondary" style="display:none">Download</button>
+      </div>
+
+      <div style="margin-top:10px;" class="small">
+        <label class="small">Analytics / CDN endpoint:</label>
+        <input id="analyticsUrl" type="text" placeholder="https://your-analytics-endpoint.example/collect" style="min-width:420px;" value="https://example-cdn-analytics/collect" />
+      </div>
+
+      <div style="margin-top:12px;">
+        <label class="small">Last event:</label>
+        <div id="lastEvent" class="stat">—</div>
+      </div>
+
+      <footer>
+        Notes: replace <code>analytics endpoint</code>. Recording uses <code>captureStream()</code> and may be blocked by CORS for some streams.
+      </footer>
+    </div>
+
+    <div class="panel">
+      <h3>Playback / Analytics</h3>
+
+      <div class="stat">
+        <strong>Player state:</strong>
+        <div id="playerState">idle</div>
+      </div>
+
+      <div class="stat">
+        <strong>Current time / duration:</strong>
+        <div id="timeInfo">0 / 0</div>
+      </div>
+
+      <div class="stat">
+        <strong>Bitrate / Level:</strong>
+        <div id="bitrates">—</div>
+      </div>
+
+      <div class="stat">
+        <strong>CDN requests (recent):</strong>
+        <div id="cdnRequests" class="log">no requests yet</div>
+      </div>
+
+      <div style="margin-top:12px;">
+        <strong>Event log</strong>
+        <div id="eventLog" class="log">ready</div>
+      </div>
+    </div>
+  </div>
+
+<script>
+/*
+  Player features implemented:
+  - Hls.js playback for m3u8 streams on non-Safari.
+  - Native HLS on Safari.
+  - MP4 playback.
+  - Analytics: play/pause/timeupdate/fragment loaded/level switch, posted to analytics endpoint.
+  - CDN request logging: Hls.js FRAG_LOADED events include URLs.
+  - Recording via captureStream() + MediaRecorder (save webm).
+  - Configurable analytics endpoint via input field.
+*/
+
+const video = document.getElementById('video');
+const urlInput = document.getElementById('urlInput');
+const typeSelect = document.getElementById('typeSelect');
+const loadBtn = document.getElementById('loadBtn');
+const stopBtn = document.getElementById('stopBtn');
+const analyticsUrlInput = document.getElementById('analyticsUrl');
+const lastEventEl = document.getElementById('lastEvent');
+const playerStateEl = document.getElementById('playerState');
+const timeInfoEl = document.getElementById('timeInfo');
+const bitratesEl = document.getElementById('bitrates');
+const cdnRequestsEl = document.getElementById('cdnRequests');
+const eventLogEl = document.getElementById('eventLog');
+const recordBtn = document.getElementById('recordBtn');
+const downloadRecordingBtn = document.getElementById('downloadRecording');
+
+let hls = null;
+let cdnRequests = [];
+let eventLog = [];
+let recorder = null;
+let recordedChunks = [];
+let isRecording = false;
+let heartbeatInterval = null;
+const HEARTBEAT_MS = 15000; // 15s heartbeat to analytics
+
+// Replaceable analytics endpoint
+function analyticsEndpoint() {
+  return analyticsUrlInput.value || '';
+}
+
+function logEvent(message, extra = {}) {
+  const time = new Date().toISOString();
+  const line = `[${time}] ${message}`;
+  eventLog.unshift(line);
+  if (eventLog.length > 500) eventLog.pop();
+  eventLogEl.textContent = eventLog.slice(0,200).join('\n');
+  lastEventEl.textContent = message;
+  // console.debug(line, extra);
+
+  // Send to analytics endpoint (non-blocking)
+  const url = analyticsEndpoint();
+  if (url) {
+    const payload = {
+      ts: time,
+      event: message,
+      url: urlInput.value,
+      playerState: playerStateEl.textContent,
+      extra,
+    };
+    // Use sendBeacon if available for unload-safe fire-and-forget
+    try {
+      const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(url, blob);
+      } else {
+        fetch(url, { method: 'POST', body: JSON.stringify(payload), headers: {'Content-Type':'application/json'} }).catch(()=>{});
+      }
+    } catch(err) {
+      console.warn('Analytics send failed', err);
+    }
+  }
+}
+
+// Update UI helpers
+function updateState(s) {
+  playerStateEl.textContent = s;
+}
+function updateTimeInfo() {
+  const cur = isFinite(video.currentTime) ? video.currentTime : 0;
+  const dur = isFinite(video.duration) ? video.duration : 0;
+  timeInfoEl.textContent = `${cur.toFixed(1)} / ${isFinite(dur) ? dur.toFixed(1) : 'LIVE'}`;
+}
+
+// HLS setup
+function setupHls(url) {
+  destroyHls();
+  if (Hls.isSupported()) {
+    hls = new Hls({
+      // debug: true,
+      capLevelToPlayerSize: true,
+      maxBufferLength: 30,
+      // enable ABR
+      abrEwmaDefaultEstimate: 500000,
+    });
+    hls.attachMedia(video);
+    hls.on(Hls.Events.MEDIA_ATTACHED, () => {
+      logEvent('Hls.js attached to media');
+      hls.loadSource(url);
+    });
+
+    hls.on(Hls.Events.MANIFEST_PARSED, (evt, data) => {
+      logEvent('Hls manifest parsed', {levels: data.levels.length});
+      // autostart play
+      video.play().catch(()=>{});
+    });
+
+    hls.on(Hls.Events.ERROR, (evt, data) => {
+      const fatal = data.fatal;
+      logEvent(`Hls error: ${data.type} / ${data.details}`, data);
+      if (fatal) {
+        switch(data.type) {
+          case Hls.ErrorTypes.NETWORK_ERROR:
+            logEvent('Fatal network error — trying to recover');
+            hls.startLoad();
+            break;
+          case Hls.ErrorTypes.MEDIA_ERROR:
+            logEvent('Fatal media error — trying to recover');
+            hls.recoverMediaError();
+            break;
+          default:
+            logEvent('Unrecoverable — destroying hls instance');
+            destroyHls();
+            break;
+        }
+      }
+    });
+
+    // fragment loaded -> CDN request info
+    hls.on(Hls.Events.FRAG_LOADED, (evt, data) => {
+      const fragUrl = data.frag && data.frag.url ? data.frag.url : 'unknown';
+      const byterange = data.frag && data.frag.byteRange ? data.frag.byteRange : null;
+      cdnRequests.unshift(`${new Date().toISOString()} ${fragUrl} ${byterange ? JSON.stringify(byterange) : ''}`);
+      if (cdnRequests.length > 200) cdnRequests.pop();
+      cdnRequestsEl.textContent = cdnRequests.slice(0,200).join('\n');
+      logEvent('Fragment loaded', {frag: data.frag && data.frag.url});
+    });
+
+    // level switched -> bitrate update
+    hls.on(Hls.Events.LEVEL_SWITCHED, (evt, data) => {
+      const level = hls.levels && hls.levels[data.level] ? hls.levels[data.level] : null;
+      const bw = level ? level.bitrate : 'unknown';
+      bitratesEl.textContent = `level ${data.level} - bitrate ~ ${bw} bps`;
+      logEvent('Level switched', {level:data.level, bitrate:bw});
+    });
+
+    // bitrate changed via ABR
+    hls.on(Hls.Events.FRAG_BUFFERED, () => {
+      // samples of buffer/bandwidth stats
+      const stats = hls.latency ? { // some Hls versions expose stats
+        fragCurrent: hls.startFrag,
+      } : {};
+      // send heartbeat on each frag buffered (light)
+      logEvent('Frag buffered', stats);
+    });
+  } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+    // Native HLS (Safari)
+    video.src = url;
+    video.addEventListener('loadedmetadata', () => {
+      logEvent('Native HLS loaded (Safari)');
+      video.play().catch(()=>{});
+    });
+  } else {
+    logEvent('HLS not supported in this browser and Hls.js not available');
+    alert('HLS not supported in this browser');
+  }
+}
+
+function destroyHls() {
+  if (hls) {
+    try { hls.destroy(); } catch(e) {}
+    hls = null;
+  }
+  // clear video src if needed
+  video.removeAttribute('src');
+  try { video.load(); } catch(e) {}
+}
+
+// Main load handler
+loadBtn.addEventListener('click', () => {
+  const url = urlInput.value.trim();
+  if (!url) return alert('Enter a stream URL (m3u8 or mp4)');
+  const type = typeSelect.value;
+
+  updateState('loading');
+  logEvent('Loading stream', {url, type});
+
+  if (type === 'mp4' || (type === 'auto' && url.match(/\.mp4($|\?)/i))) {
+    // MP4 playback
+    destroyHls();
+    video.src = url;
+    video.crossOrigin = 'anonymous';
+    video.play().then(()=> {
+      updateState('playing (mp4)');
+      logEvent('Playing MP4');
+    }).catch(err => {
+      updateState('paused');
+      logEvent('Play promise rejected', {err: err.message});
+    });
+    return;
+  }
+
+  // Otherwise HLS
+  setupHls(url);
+  updateState('playing (hls)');
+});
+
+// stop button
+stopBtn.addEventListener('click', () => {
+  updateState('stopped');
+  logEvent('Stop playback requested');
+  try { video.pause(); } catch(e) {}
+  destroyHls();
+});
+
+// video events analytics
+video.addEventListener('play', () => {
+  updateState('playing');
+  logEvent('play');
+});
+video.addEventListener('pause', () => {
+  updateState('paused');
+  logEvent('pause');
+});
+video.addEventListener('seeking', () => logEvent('seeking', {time: video.currentTime}));
+video.addEventListener('seeked', () => logEvent('seeked', {time: video.currentTime}));
+video.addEventListener('ended', () => { updateState('ended'); logEvent('ended'); });
+video.addEventListener('timeupdate', () => {
+  updateTimeInfo();
+  // Send lightweight periodic timeupdate analytics (throttle)
+  // We will send heartbeat separately; avoid spamming.
+});
+
+// Heartbeat: send periodic metrics
+function startHeartbeat() {
+  if (heartbeatInterval) clearInterval(heartbeatInterval);
+  heartbeatInterval = setInterval(() => {
+    const payload = {
+      ts: new Date().toISOString(),
+      event: 'heartbeat',
+      currentTime: video.currentTime,
+      duration: video.duration,
+      playbackState: playerStateEl.textContent,
+      cdnRequestsCount: cdnRequests.length,
+      url: urlInput.value,
+    };
+    const url = analyticsEndpoint();
+    if (url) {
+      try {
+        const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+        if (navigator.sendBeacon) navigator.sendBeacon(url, blob);
+        else fetch(url, { method: 'POST', body: JSON.stringify(payload), headers: {'Content-Type':'application/json'} }).catch(()=>{});
+      } catch(e) {}
+    }
+    logEvent('heartbeat', {currentTime: video.currentTime});
+  }, HEARTBEAT_MS);
+}
+
+// start heartbeat when play
+video.addEventListener('playing', startHeartbeat);
+video.addEventListener('pause', () => { if (heartbeatInterval) clearInterval(heartbeatInterval); });
+
+// Recording functions
+recordBtn.addEventListener('click', async () => {
+  if (!isRecording) {
+    // Start recording
+    if (typeof video.captureStream !== 'function') {
+      alert('captureStream() not supported in this browser — recording not available.');
+      return;
+    }
+    try {
+      const stream = video.captureStream();
+      if (!stream) {
+        alert('Unable to capture stream (CORS or protected content).');
+        return;
+      }
+      recordedChunks = [];
+      recorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9,opus' });
+      recorder.ondataavailable = (ev) => {
+        if (ev.data && ev.data.size) recordedChunks.push(ev.data);
+      };
+      recorder.onstop = () => {
+        const blob = new Blob(recordedChunks, { type: 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        downloadRecordingBtn.style.display = '';
+        downloadRecordingBtn.href = url;
+        downloadRecordingBtn.download = `recording-${new Date().toISOString().replace(/[:.]/g,'-')}.webm`;
+        logEvent('Recording stopped - ready for download');
+      };
+      recorder.onerror = (e) => logEvent('Recorder error', {err:e});
+      recorder.start(1000); // chunk every second
+      isRecording = true;
+      recordBtn.textContent = 'Stop Recording';
+      logEvent('Recording started');
+    } catch (err) {
+      logEvent('Start recording failed', {err: err.message});
+      alert('Recording failed: ' + err.message);
+    }
+  } else {
+    // Stop recording
+    if (recorder && recorder.state !== 'inactive') {
+      recorder.stop();
+    }
+    isRecording = false;
+    recordBtn.textContent = 'Start Recording';
+  }
+});
+
+// Download button: use a link element to navigate
+downloadRecordingBtn.addEventListener('click', (e) => {
+  // If we've set href already, allow default behavior
+  if (!downloadRecordingBtn.href) e.preventDefault();
+});
+
+// Utility: show messages on load
+logEvent('player ready');
+
+// Optional: display some useful keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+  if (e.key === ' ') {
+    e.preventDefault();
+    if (video.paused) video.play(); else video.pause();
+  } else if (e.key === 'f') {
+    if (document.fullscreenElement) document.exitFullscreen(); else document.getElementById('videoWrap').requestFullscreen();
+  }
+});
+
+// Small UX: update time info periodically
+setInterval(updateTimeInfo, 500);
+
+// Expose a quick public API for debugging
+window.__playerDebug = {
+  logEvent,
+  getCdnRequests: () => cdnRequests.slice(),
+  getEventLog: () => eventLog.slice(),
+  destroyHls,
+};
+
+</script>
+</body>
+</html>
